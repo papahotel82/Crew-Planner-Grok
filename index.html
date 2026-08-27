@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=5" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="description" content="Analyse et gestion des plannings de travail équipage (PWA)" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="icon" href="icon-192.png" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <title>Crew Planner – Planning Équipage</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body data-theme="dark">
+  <div class="app">
+    <header>
+      <div class="logo">✈️ <span>Crew</span>Planner</div>
+      <div class="header-actions">
+        <div class="theme-switcher" role="group" aria-label="Thème">
+          <button type="button" class="theme-btn active" data-theme="dark" title="Sombre">🌙</button>
+          <button type="button" class="theme-btn" data-theme="light" title="Clair">☀️</button>
+          <button type="button" class="theme-btn" data-theme="high-contrast" title="Haut contraste">🔲</button>
+        </div>
+        <button type="button" class="btn btn-secondary" id="btn-import" aria-label="Importer des fichiers XLSX">
+          📂 Importer
+        </button>
+        <input type="file" id="file-input" accept=".xlsx,.xls" multiple hidden />
+        <button type="button" class="btn btn-secondary" id="btn-export" disabled aria-label="Exporter les données">
+          💾 Exporter
+        </button>
+        <button type="button" class="btn btn-primary" id="btn-nonworked" disabled aria-label="Configurer les jours non travaillés">
+          ⚙️ Non travaillés
+        </button>
+      </div>
+    </header>
+
+    <main>
+      <!-- Empty state -->
+      <section id="empty-state" class="card empty-state">
+        <h2>Aucun planning chargé</h2>
+        <p>Importez un ou plusieurs fichiers Excel (.xlsx) de planning équipage pour commencer l'analyse.</p>
+        <p style="margin-top:1rem;font-size:0.9rem">Formats supportés : structure type « Crew Duties » avec colonnes de dates et codes de service.</p>
+        <button type="button" class="btn btn-primary" style="margin-top:1.5rem" id="btn-import-empty">
+          📂 Choisir des fichiers
+        </button>
+      </section>
+
+      <!-- Dashboard (hidden until data) -->
+      <div id="dashboard" hidden>
+        <!-- Files loaded -->
+        <section class="card">
+          <div class="card-title">
+            <span>📁 Fichiers chargés</span>
+            <button type="button" class="btn btn-ghost btn-icon" id="btn-clear" title="Tout effacer" aria-label="Effacer toutes les données">🗑️</button>
+          </div>
+          <div id="file-list" class="file-list"></div>
+        </section>
+
+        <!-- Stats -->
+        <section class="card">
+          <div class="card-title">📊 Indicateurs clés</div>
+          <div class="stats-grid" id="stats-grid">
+            <!-- filled by JS -->
+          </div>
+        </section>
+
+        <!-- Filters -->
+        <section class="card">
+          <div class="card-title">🔍 Filtres</div>
+          <div class="filters">
+            <div class="filter-group">
+              <label for="filter-person">Personne</label>
+              <select id="filter-person">
+                <option value="">Toutes</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label for="filter-from">Du</label>
+              <input type="date" id="filter-from" />
+            </div>
+            <div class="filter-group">
+              <label for="filter-to">Au</label>
+              <input type="date" id="filter-to" />
+            </div>
+            <div class="filter-group">
+              <label for="filter-code">Code</label>
+              <select id="filter-code">
+                <option value="">Tous</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <label>&nbsp;</label>
+              <button type="button" class="btn btn-secondary" id="btn-reset-filters">Réinitialiser</button>
+            </div>
+          </div>
+        </section>
+
+        <!-- Charts -->
+        <section class="card">
+          <div class="card-title">📈 Visualisations</div>
+          <div class="charts-grid">
+            <div>
+              <h3 style="font-size:0.95rem;margin-bottom:0.5rem;color:var(--text-muted)">Répartition des codes</h3>
+              <div class="chart-container">
+                <canvas id="chart-pie"></canvas>
+              </div>
+            </div>
+            <div>
+              <h3 style="font-size:0.95rem;margin-bottom:0.5rem;color:var(--text-muted)">Jours non travaillés par personne</h3>
+              <div class="chart-container">
+                <canvas id="chart-bar"></canvas>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Data table -->
+        <section class="card">
+          <div class="card-title">
+            <span>📋 Détail du planning</span>
+            <span id="table-count" style="font-size:0.85rem;font-weight:500;color:var(--text-muted)"></span>
+          </div>
+          <div class="table-wrapper">
+            <table>
+              <thead>
+                <tr>
+                  <th>Date</th>
+                  <th>Personne</th>
+                  <th>Rôle</th>
+                  <th>Code</th>
+                  <th>Note</th>
+                  <th>Type</th>
+                </tr>
+              </thead>
+              <tbody id="table-body"></tbody>
+            </table>
+          </div>
+        </section>
+      </div>
+    </main>
+  </div>
+
+  <!-- Modal non-worked -->
+  <div class="modal-overlay" id="modal-nonworked" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+    <div class="modal">
+      <div class="modal-header">
+        <h2 id="modal-title">Codes considérés comme non travaillés</h2>
+        <button type="button" class="btn btn-ghost btn-icon" id="modal-close" aria-label="Fermer">✕</button>
+      </div>
+      <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:0.5rem">
+        Cochez les codes qui doivent être comptés comme <strong>jours non travaillés</strong> pour le calcul du ratio.
+        Les cellules vides sont traitées comme jours travaillés (vol).
+      </p>
+      <div class="checkbox-grid" id="nonworked-checkboxes">
+        <!-- filled by JS -->
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="modal-cancel">Annuler</button>
+        <button type="button" class="btn btn-primary" id="modal-save">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
