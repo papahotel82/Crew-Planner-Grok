@@ -693,3 +693,87 @@ tr:hover td { background: var(--bg-secondary); }
   flex: 1;
   min-width: 140px;
 }
+
+/* Version badge */
+.app-version {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-left: 0.35rem;
+  vertical-align: middle;
+  opacity: 0.85;
+}
+
+/* Stats one row per person */
+.stats-per-person {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.stat-person-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 1.4fr) repeat(4, minmax(70px, 1fr));
+  gap: 0.5rem;
+  align-items: center;
+  padding: 0.75rem 1rem;
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.stat-person-name {
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.stat-person-name .color-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  border: 1px solid var(--border);
+}
+
+.stat-person-cell {
+  text-align: center;
+}
+
+.stat-person-cell .val {
+  font-size: 1.15rem;
+  font-weight: 800;
+  color: var(--primary);
+  line-height: 1.2;
+}
+
+.stat-person-cell .lbl {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  margin-top: 0.1rem;
+}
+
+@media (max-width: 640px) {
+  .stat-person-row {
+    grid-template-columns: 1fr 1fr;
+    gap: 0.4rem;
+  }
+  .stat-person-name {
+    grid-column: 1 / -1;
+    margin-bottom: 0.25rem;
+  }
+}
+
+/* Full-width chart */
+.chart-full {
+  height: 300px;
+  width: 100%;
+}
+
+@media (min-width: 768px) {
+  .chart-full {
+    height: 340px;
+  }
+}

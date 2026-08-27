@@ -16,7 +16,7 @@
 <body data-theme="dark">
   <div class="app">
     <header>
-      <div class="logo">✈️ <span>Crew</span>Planner</div>
+      <div class="logo">✈️ <span>Crew</span>Planner <small id="app-version" class="app-version">v1.1.0</small></div>
       <div class="header-actions">
         <div class="theme-switcher" role="group" aria-label="Thème">
           <button type="button" class="theme-btn active" data-theme="dark" title="Sombre">🌙</button>
@@ -37,7 +37,6 @@
     </header>
 
     <main>
-      <!-- Empty state -->
       <section id="empty-state" class="card empty-state">
         <h2>Aucun planning chargé</h2>
         <p>Importez un ou plusieurs fichiers Excel (.xlsx) de planning équipage pour commencer l'analyse.</p>
@@ -47,18 +46,8 @@
         </button>
       </section>
 
-      <!-- Dashboard (hidden until data) -->
       <div id="dashboard" hidden>
-        <!-- Files loaded -->
-        <section class="card">
-          <div class="card-title">
-            <span>📁 Fichiers chargés</span>
-            <button type="button" class="btn btn-ghost btn-icon" id="btn-clear" title="Tout effacer" aria-label="Effacer toutes les données">🗑️</button>
-          </div>
-          <div id="file-list" class="file-list"></div>
-        </section>
-
-        <!-- Stats -->
+        <!-- Indicateurs clés : une ligne par membre -->
         <section class="card">
           <div class="card-title">
             <span>📊 Indicateurs clés</span>
@@ -67,23 +56,21 @@
               <select id="ratio-mode" style="min-height:36px;padding:0.35rem 0.5rem;font-size:0.85rem">
                 <option value="period">% sur la période</option>
                 <option value="year">% vs jours de l'année</option>
-                <option value="projected">Projection annualisée</option>
+                <option value="projected">Taux annualisé (période)</option>
               </select>
             </div>
           </div>
-          <div class="stats-grid" id="stats-grid"></div>
+          <div id="stats-grid" class="stats-per-person"></div>
           <p id="ratio-note" style="font-size:0.8rem;color:var(--text-muted);margin-top:0.75rem"></p>
         </section>
 
-        <!-- Filters -->
+        <!-- Filtres -->
         <section class="card">
           <div class="card-title">🔍 Filtres</div>
           <div class="filters">
             <div class="filter-group">
               <label for="filter-person">Personne</label>
-              <select id="filter-person">
-                <option value="">Toutes</option>
-              </select>
+              <select id="filter-person"><option value="">Toutes</option></select>
             </div>
             <div class="filter-group">
               <label for="filter-from">Du</label>
@@ -95,9 +82,7 @@
             </div>
             <div class="filter-group">
               <label for="filter-code">Code</label>
-              <select id="filter-code">
-                <option value="">Tous</option>
-              </select>
+              <select id="filter-code"><option value="">Tous</option></select>
             </div>
             <div class="filter-group">
               <label>&nbsp;</label>
@@ -106,10 +91,20 @@
           </div>
         </section>
 
-        <!-- Charts -->
+        <!-- Visualisations -->
         <section class="card">
           <div class="card-title">📈 Visualisations</div>
-          <div class="charts-controls" style="display:flex;flex-wrap:wrap;gap:0.75rem;margin-bottom:1rem;align-items:flex-end">
+
+          <!-- Histogramme en premier, pleine largeur -->
+          <div style="margin-bottom:1.5rem">
+            <h3 style="font-size:0.95rem;margin-bottom:0.5rem;color:var(--text-muted)">Jours non travaillés par personne</h3>
+            <div class="chart-container chart-full">
+              <canvas id="chart-bar"></canvas>
+            </div>
+          </div>
+
+          <!-- Camembert en dessous -->
+          <div class="charts-controls" style="display:flex;flex-wrap:wrap;gap:0.75rem;margin-bottom:0.75rem;align-items:flex-end">
             <div class="filter-group">
               <label for="pie-mode">Camembert</label>
               <select id="pie-mode">
@@ -120,30 +115,20 @@
             </div>
             <div class="filter-group" id="pair-selects" hidden>
               <label>Comparer</label>
-              <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+              <div style="display:flex;gap:0.5rem;flex-wrap:wrap;align-items:center">
                 <select id="pair-a"></select>
-                <span style="align-self:center">↔</span>
+                <span>↔</span>
                 <select id="pair-b"></select>
               </div>
             </div>
           </div>
-          <div class="charts-grid">
-            <div>
-              <h3 id="pie-title" style="font-size:0.95rem;margin-bottom:0.5rem;color:var(--text-muted)">Répartition des codes</h3>
-              <div class="chart-container">
-                <canvas id="chart-pie"></canvas>
-              </div>
-            </div>
-            <div>
-              <h3 style="font-size:0.95rem;margin-bottom:0.5rem;color:var(--text-muted)">Jours non travaillés par personne</h3>
-              <div class="chart-container">
-                <canvas id="chart-bar"></canvas>
-              </div>
-            </div>
+          <h3 id="pie-title" style="font-size:0.95rem;margin-bottom:0.5rem;color:var(--text-muted)">Répartition des codes</h3>
+          <div class="chart-container chart-full">
+            <canvas id="chart-pie"></canvas>
           </div>
         </section>
 
-        <!-- Calendar heatmap (collapsible) -->
+        <!-- Calendrier heatmap (repliable) -->
         <section class="card collapsible">
           <button type="button" class="collapsible-header" aria-expanded="false" data-target="heatmap-body">
             <span>📅 Calendrier (heatmap)</span>
@@ -153,9 +138,7 @@
             <div class="filters" style="margin-bottom:1rem">
               <div class="filter-group">
                 <label for="heatmap-person">Personne</label>
-                <select id="heatmap-person">
-                  <option value="">Toutes (vue consolidée)</option>
-                </select>
+                <select id="heatmap-person"><option value="">Toutes (vue consolidée)</option></select>
               </div>
               <div class="filter-group">
                 <label for="heatmap-month">Mois</label>
@@ -167,7 +150,7 @@
           </div>
         </section>
 
-        <!-- Data table (collapsible, last) -->
+        <!-- Détail du planning (repliable) -->
         <section class="card collapsible">
           <button type="button" class="collapsible-header" aria-expanded="false" data-target="table-body-section">
             <span>📋 Détail du planning <span id="table-count" style="font-weight:500;color:var(--text-muted);font-size:0.9rem"></span></span>
@@ -189,6 +172,20 @@
                 <tbody id="table-body"></tbody>
               </table>
             </div>
+          </div>
+        </section>
+
+        <!-- Fichiers chargés (repliable, tout en bas) -->
+        <section class="card collapsible">
+          <button type="button" class="collapsible-header" aria-expanded="false" data-target="files-body">
+            <span>📁 Fichiers chargés</span>
+            <span class="chevron">▼</span>
+          </button>
+          <div id="files-body" class="collapsible-body" hidden>
+            <div style="display:flex;justify-content:flex-end;margin-bottom:0.5rem">
+              <button type="button" class="btn btn-ghost btn-icon" id="btn-clear" title="Tout effacer" aria-label="Effacer toutes les données">🗑️ Effacer tout</button>
+            </div>
+            <div id="file-list" class="file-list"></div>
           </div>
         </section>
       </div>
@@ -214,7 +211,7 @@
     </div>
   </div>
 
-  <!-- Modal conflict resolution -->
+  <!-- Modal conflict -->
   <div class="modal-overlay" id="modal-conflict" role="dialog" aria-modal="true" aria-labelledby="conflict-title">
     <div class="modal" style="max-width:640px">
       <div class="modal-header">

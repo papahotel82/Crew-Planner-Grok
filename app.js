@@ -1,11 +1,12 @@
 /**
- * Crew Planner PWA
+ * Crew Planner PWA v1.1.0
  * Analyse des plannings équipage (format Crew Duties XLSX)
  */
 
 (function () {
   'use strict';
 
+  const APP_VERSION = '1.1.0';
   const STORAGE_KEY = 'crewPlannerData_v1';
   const THEME_KEY = 'crewPlannerTheme';
 
@@ -19,13 +20,33 @@
     'OFF', 'H', 'SICK', 'MED', 'CVR', 'Rest Period', 'Days Off', 'Vacation'
   ]);
 
+  // Couleurs fixes par équipier (toujours les mêmes)
+  const PERSON_PALETTE = [
+    '#3b82f6', // blue
+    '#22c55e', // green
+    '#f59e0b', // amber
+    '#ef4444', // red
+    '#8b5cf6', // violet
+    '#06b6d4', // cyan
+    '#ec4899', // pink
+    '#84cc16'  // lime
+  ];
+  const personColorMap = {}; // name -> color (stable once assigned)
+
+  function getPersonColor(name) {
+    if (!personColorMap[name]) {
+      const idx = Object.keys(personColorMap).length % PERSON_PALETTE.length;
+      personColorMap[name] = PERSON_PALETTE[idx];
+    }
+    return personColorMap[name];
+  }
+
   const HEAT_COLORS = {
     nonworked: '#f59e0b',
     flight: '#22c55e',
     office: '#3b82f6',
     training: '#8b5cf6',
-    other: '#64748b',
-    empty: 'transparent'
+    other: '#64748b'
   };
 
   let records = [];
@@ -67,12 +88,14 @@
     conflictList: $('#conflict-list'),
     toast: $('#toast'),
     fileInput: $('#file-input'),
+    appVersion: $('#app-version')
   };
 
-  function toast(msg, duration = 2800) {
+  function toast(msg, duration) {
+    duration = duration || 2800;
     el.toast.textContent = msg;
     el.toast.classList.add('show');
-    setTimeout(() => el.toast.classList.remove('show'), duration);
+    setTimeout(function () { el.toast.classList.remove('show'); }, duration);
   }
 
   function parseDateFR(str) {
@@ -111,15 +134,13 @@
 
   function saveState() {
     try {
-      const payload = {
-        records: records.map((r) => ({ ...r, date: isoDate(r.date) })),
-        filesMeta,
-        nonWorked: [...nonWorkedCodes]
-      };
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(payload));
-    } catch (e) {
-      console.warn('Save failed', e);
-    }
+      localStorage.setItem(STORAGE_KEY, JSON.stringify({
+        records: records.map(function (r) { return Object.assign({}, r, { date: isoDate(r.date) }); }),
+        filesMeta: filesMeta,
+        nonWorked: Array.from(nonWorkedCodes),
+        personColors: personColorMap
+      }));
+    } catch (e) { console.warn('Save failed', e); }
   }
 
   function loadState() {
@@ -127,22 +148,24 @@
       const raw = localStorage.getItem(STORAGE_KEY);
       if (!raw) return;
       const data = JSON.parse(raw);
-      records = (data.records || []).map((r) => ({
-        ...r,
-        date: parseDateFR(r.date)
-      }));
+      records = (data.records || []).map(function (r) {
+        return Object.assign({}, r, { date: parseDateFR(r.date) });
+      });
       filesMeta = data.filesMeta || [];
-      if (Array.isArray(data.nonWorked)) {
-        nonWorkedCodes = new Set(data.nonWorked);
+      if (Array.isArray(data.nonWorked)) nonWorkedCodes = new Set(data.nonWorked);
+      if (data.personColors && typeof data.personColors === 'object') {
+        Object.keys(data.personColors).forEach(function (k) {
+          personColorMap[k] = data.personColors[k];
+        });
       }
-    } catch (e) {
-      console.warn('Load failed', e);
-    }
+    } catch (e) { console.warn('Load failed', e); }
   }
 
   function applyTheme(theme) {
     document.body.dataset.theme = theme;
-    $$('.theme-btn').forEach((b) => b.classList.toggle('active', b.dataset.theme === theme));
+    $$('.theme-btn').forEach(function (b) {
+      b.classList.toggle('active', b.dataset.theme === theme);
+    });
     localStorage.setItem(THEME_KEY, theme);
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) {
@@ -159,7 +182,6 @@
     const range = XLSX.utils.decode_range(ws['!ref'] || 'A1');
     const maxRow = range.e.r;
     const maxCol = range.e.c;
-
     const newRecords = [];
     let currentRole = '';
     let dateRow = null;
@@ -180,11 +202,11 @@
 
       if (valA && dateRow && !/cockpit|av\s*-|stbh|sim\s*-|36sdo|office|sick|rest period|days off|vacation|request|cvr|ext\s*-/i.test(valA)) {
         const person = valA;
+        getPersonColor(person); // assign stable color early
 
         for (let c = 1; c <= maxCol; c++) {
           const d = dateRow[c];
           if (!d) continue;
-
           const cell = ws[XLSX.utils.encode_cell({ r: r, c: c })];
           let code = cell && cell.v != null ? String(cell.v).trim() : '';
           if (code === '') code = null;
@@ -216,7 +238,8 @@
   async function handleFiles(fileList) {
     if (!fileList || !fileList.length) return;
 
-    for (const file of fileList) {
+    for (let fi = 0; fi < fileList.length; fi++) {
+      const file = fileList[fi];
       try {
         const buf = await file.arrayBuffer();
         const wb = XLSX.read(buf, { type: 'array', cellDates: false });
@@ -228,29 +251,28 @@
         }
 
         const existingMap = new Map();
-        records.forEach((r) => existingMap.set(r.person + '|' + isoDate(r.date), r));
+        records.forEach(function (r) {
+          existingMap.set(r.person + '|' + isoDate(r.date), r);
+        });
 
         const conflicts = [];
         const cleanNew = [];
 
-        parsed.forEach((r) => {
+        parsed.forEach(function (r) {
           const key = r.person + '|' + isoDate(r.date);
           const existing = existingMap.get(key);
           if (existing) {
             const same =
               (existing.code || '') === (r.code || '') &&
               (existing.note || '') === (r.note || '');
-            if (!same) {
-              conflicts.push({ key: key, existing: existing, incoming: r });
-            } else {
-              cleanNew.push(r);
-            }
+            if (!same) conflicts.push({ key: key, existing: existing, incoming: r });
+            else cleanNew.push(r);
           } else {
             cleanNew.push(r);
           }
         });
 
-        const dates = parsed.map((r) => r.date).filter(Boolean).sort((a, b) => a - b);
+        const dates = parsed.map(function (r) { return r.date; }).filter(Boolean).sort(function (a, b) { return a - b; });
         const period = dates.length
           ? formatDate(dates[0]) + ' → ' + formatDate(dates[dates.length - 1])
           : '—';
@@ -273,12 +295,16 @@
 
   function applyImport(newRecs, meta) {
     const byKey = new Map();
-    records.forEach((r) => byKey.set(r.person + '|' + isoDate(r.date), r));
-    newRecs.forEach((r) => byKey.set(r.person + '|' + isoDate(r.date), r));
+    records.forEach(function (r) {
+      byKey.set(r.person + '|' + isoDate(r.date), r);
+    });
+    newRecs.forEach(function (r) {
+      byKey.set(r.person + '|' + isoDate(r.date), r);
+    });
     records = Array.from(byKey.values());
 
     if (meta) {
-      filesMeta = filesMeta.filter((f) => f.name !== meta.name);
+      filesMeta = filesMeta.filter(function (f) { return f.name !== meta.name; });
       filesMeta.push(meta);
     }
     saveState();
@@ -287,25 +313,23 @@
   }
 
   function openConflictModal(conflicts) {
-    el.conflictList.innerHTML = conflicts
-      .map((c, i) => {
-        const d = formatDate(c.existing.date);
-        return (
-          '<div class="conflict-item" data-idx="' + i + '">' +
-          '<div class="conflict-meta">' +
-          '<strong>' + c.existing.person + '</strong> · ' + d + '<br>' +
-          '<span style="color:var(--text-muted)">Existant : ' + (c.existing.code || '(vide)') +
-          (c.existing.note ? ' (' + c.existing.note + ')' : '') + ' ← ' + c.existing.source + '</span><br>' +
-          '<span style="color:var(--text-muted)">Nouveau : ' + (c.incoming.code || '(vide)') +
-          (c.incoming.note ? ' (' + c.incoming.note + ')' : '') + ' ← ' + c.incoming.source + '</span>' +
-          '</div>' +
-          '<select class="conflict-choice" data-idx="' + i + '">' +
-          '<option value="old">Garder l\'existant</option>' +
-          '<option value="new" selected>Garder le nouveau</option>' +
-          '</select></div>'
-        );
-      })
-      .join('');
+    el.conflictList.innerHTML = conflicts.map(function (c, i) {
+      const d = formatDate(c.existing.date);
+      return (
+        '<div class="conflict-item" data-idx="' + i + '">' +
+        '<div class="conflict-meta">' +
+        '<strong>' + c.existing.person + '</strong> · ' + d + '<br>' +
+        '<span style="color:var(--text-muted)">Existant : ' + (c.existing.code || '(vide)') +
+        (c.existing.note ? ' (' + c.existing.note + ')' : '') + ' ← ' + c.existing.source + '</span><br>' +
+        '<span style="color:var(--text-muted)">Nouveau : ' + (c.incoming.code || '(vide)') +
+        (c.incoming.note ? ' (' + c.incoming.note + ')' : '') + ' ← ' + c.incoming.source + '</span>' +
+        '</div>' +
+        '<select class="conflict-choice" data-idx="' + i + '">' +
+        '<option value="old">Garder l\'existant</option>' +
+        '<option value="new" selected>Garder le nouveau</option>' +
+        '</select></div>'
+      );
+    }).join('');
     el.modalConflict.classList.add('open');
   }
 
@@ -325,20 +349,16 @@
         choices.set(+sel.dataset.idx, sel.value);
       });
     }
-
     const toAdd = pendingNewRecords.slice();
     pendingConflicts.forEach(function (c, i) {
-      const choice = choices.get(i) || 'new';
-      if (choice === 'new') toAdd.push(c.incoming);
+      if ((choices.get(i) || 'new') === 'new') toAdd.push(c.incoming);
     });
-
     applyImport(toAdd, pendingFileMeta);
     closeConflictModal();
   }
 
   function getFiltered() {
     let list = records.slice();
-
     const person = el.filterPerson.value;
     if (person) list = list.filter(function (r) { return r.person === person; });
 
@@ -415,9 +435,8 @@
 
     const worked = totalDays - nonWorked;
     const ratioPeriod = totalDays ? (nonWorked / totalDays) * 100 : 0;
-
     let yearDays = 365;
-    if (years.size === 1) yearDays = daysInYear([...years][0]);
+    if (years.size === 1) yearDays = daysInYear(Array.from(years)[0]);
     const ratioYear = yearDays ? (nonWorked / yearDays) * 100 : 0;
 
     return {
@@ -428,7 +447,7 @@
       ratioYear: ratioYear,
       byPerson: byPerson,
       byCode: byCode,
-      years: [...years],
+      years: Array.from(years),
       minDate: minDate,
       maxDate: maxDate,
       periodDays: daysBetween(minDate, maxDate)
@@ -444,18 +463,19 @@
 
     if (!hasData) return;
 
-    el.fileList.innerHTML = filesMeta
-      .map(function (f) {
-        return (
-          '<div class="file-item">' +
-          '<span title="' + f.name + '">' + f.name + '</span>' +
-          '<span style="font-size:0.8rem;color:var(--text-muted)">' + f.count + ' entrées · ' + f.period + '</span>' +
-          '</div>'
-        );
-      })
-      .join('');
+    // Ensure colors for all persons
+    records.forEach(function (r) { getPersonColor(r.person); });
 
-    const persons = [...new Set(records.map(function (r) { return r.person; }))].sort();
+    el.fileList.innerHTML = filesMeta.map(function (f) {
+      return (
+        '<div class="file-item">' +
+        '<span title="' + f.name + '">' + f.name + '</span>' +
+        '<span style="font-size:0.8rem;color:var(--text-muted)">' + f.count + ' entrées · ' + f.period + '</span>' +
+        '</div>'
+      );
+    }).join('') || '<p style="color:var(--text-muted)">Aucun fichier</p>';
+
+    const persons = Array.from(new Set(records.map(function (r) { return r.person; }))).sort();
     const currentPerson = el.filterPerson.value;
     el.filterPerson.innerHTML =
       '<option value="">Toutes</option>' +
@@ -471,18 +491,16 @@
     el.pairA.innerHTML = persons.map(function (p) { return '<option value="' + p + '">' + p + '</option>'; }).join('');
     el.pairB.innerHTML = persons.map(function (p) { return '<option value="' + p + '">' + p + '</option>'; }).join('');
     if (persons.length >= 2) {
-      el.pairA.value = persons[0];
-      el.pairB.value = persons[1];
+      if (!el.pairA.value) el.pairA.value = persons[0];
+      if (!el.pairB.value || el.pairB.value === el.pairA.value) el.pairB.value = persons[1];
     }
 
-    const codes = [...new Set(records.map(function (r) { return r.code; }).filter(Boolean))].sort();
+    const codes = Array.from(new Set(records.map(function (r) { return r.code; }).filter(Boolean))).sort();
     const currentCode = el.filterCode.value;
     el.filterCode.innerHTML =
       '<option value="">Tous</option><option value="__empty__">(vide)</option>' +
       codes.map(function (c) { return '<option value="' + c + '">' + c + '</option>'; }).join('');
-    if (currentCode === '__empty__' || codes.indexOf(currentCode) >= 0) {
-      el.filterCode.value = currentCode;
-    }
+    if (currentCode === '__empty__' || codes.indexOf(currentCode) >= 0) el.filterCode.value = currentCode;
 
     const allDates = records.map(function (r) { return r.date; }).filter(Boolean);
     if (allDates.length) {
@@ -497,15 +515,13 @@
       allDates.forEach(function (d) {
         months.add(d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'));
       });
-      const monthList = [...months].sort();
+      const monthList = Array.from(months).sort();
       const curMonth = el.heatmapMonth.value;
-      el.heatmapMonth.innerHTML = monthList
-        .map(function (m) {
-          const parts = m.split('-');
-          const label = new Date(+parts[0], +parts[1] - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
-          return '<option value="' + m + '">' + label + '</option>';
-        })
-        .join('');
+      el.heatmapMonth.innerHTML = monthList.map(function (m) {
+        const parts = m.split('-');
+        const label = new Date(+parts[0], +parts[1] - 1, 1).toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+        return '<option value="' + m + '">' + label + '</option>';
+      }).join('');
       if (monthList.indexOf(curMonth) >= 0) el.heatmapMonth.value = curMonth;
       else if (monthList.length) el.heatmapMonth.value = monthList[0];
     }
@@ -515,54 +531,158 @@
     renderHeatmap();
   }
 
+  // Plugin Chart.js : afficher la valeur dans chaque barre
+  const barValuePlugin = {
+    id: 'barValueLabels',
+    afterDatasetsDraw: function (chart) {
+      const ctx = chart.ctx;
+      chart.data.datasets.forEach(function (dataset, di) {
+        const meta = chart.getDatasetMeta(di);
+        if (meta.hidden) return;
+        meta.data.forEach(function (bar, i) {
+          const val = dataset.data[i];
+          if (val == null || val === 0) return;
+          const pos = bar.tooltipPosition();
+          ctx.save();
+          ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--text').trim() || '#fff';
+          ctx.font = 'bold 13px system-ui, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'bottom';
+          ctx.fillText(String(val), pos.x, pos.y - 6);
+          ctx.restore();
+        });
+      });
+    }
+  };
+
   function renderStatsAndCharts() {
     const filtered = getFiltered();
     const stats = computeStats(filtered);
     const mode = el.ratioMode.value;
 
-    let mainRatio = stats.ratioPeriod;
-    let ratioLabel = 'Ratio non travaillés / période';
-    let note = '';
+    // --- Stats : une ligne par personne ---
+    const persons = Object.keys(stats.byPerson).sort();
+    // Si filtre personne unique, on n'affiche que celle-là ; sinon toutes
+    const displayPersons = persons.length ? persons : Array.from(new Set(records.map(function (r) { return r.person; }))).sort();
 
+    let yearDays = 365;
+    if (stats.years.length === 1) yearDays = daysInYear(stats.years[0]);
+
+    el.statsGrid.innerHTML = displayPersons.map(function (p) {
+      const bp = stats.byPerson[p] || { total: 0, nonWorked: 0 };
+      const worked = bp.total - bp.nonWorked;
+      let ratio = 0;
+      let ratioLbl = '% période';
+      if (mode === 'year') {
+        ratio = yearDays ? (bp.nonWorked / yearDays) * 100 : 0;
+        ratioLbl = '% année';
+      } else {
+        ratio = bp.total ? (bp.nonWorked / bp.total) * 100 : 0;
+        ratioLbl = mode === 'projected' ? '% annualisé' : '% période';
+      }
+      const color = getPersonColor(p);
+      return (
+        '<div class="stat-person-row">' +
+        '<div class="stat-person-name"><span class="color-dot" style="background:' + color + '"></span>' + p + '</div>' +
+        '<div class="stat-person-cell"><div class="val">' + bp.total + '</div><div class="lbl">Total</div></div>' +
+        '<div class="stat-person-cell"><div class="val">' + worked + '</div><div class="lbl">Travaillés</div></div>' +
+        '<div class="stat-person-cell"><div class="val">' + bp.nonWorked + '</div><div class="lbl">Non travaillés</div></div>' +
+        '<div class="stat-person-cell"><div class="val">' + ratio.toFixed(1) + '%</div><div class="lbl">' + ratioLbl + '</div></div>' +
+        '</div>'
+      );
+    }).join('') || '<p style="color:var(--text-muted)">Aucune donnée</p>';
+
+    let note = '';
     if (mode === 'year') {
-      mainRatio = stats.ratioYear;
-      ratioLabel = 'Ratio non travaillés / année';
-      note = '* ' + stats.nonWorked + ' jours non travaillés sur ' +
-        (stats.years.length === 1 ? daysInYear(stats.years[0]) : 365) +
-        " jours de l'année. Données sur " + (stats.periodDays || '?') + ' jours calendaires.';
+      note = '* Jours non travaillés de chaque personne divisés par ' + yearDays +
+        " jours de l'année. Période des données : " + (stats.periodDays || '?') + ' jours calendaires.';
     } else if (mode === 'projected') {
-      mainRatio = stats.ratioPeriod;
-      ratioLabel = 'Taux annualisé (période)';
-      note = '* Taux observé sur la période (' + stats.ratioPeriod.toFixed(1) +
-        ' %). Si ce rythme se maintient sur une année complète, le ratio serait du même ordre.';
+      note = '* Taux observé sur la période pour chaque personne. Si ce rythme se maintient, le ratio annuel serait du même ordre.';
     } else {
       note = 'Période couverte : ' +
         (stats.minDate ? formatDate(stats.minDate) : '—') + ' → ' +
         (stats.maxDate ? formatDate(stats.maxDate) : '—') +
         ' (' + (stats.periodDays || 0) + ' jours).';
     }
-
-    el.statsGrid.innerHTML =
-      '<div class="stat-box"><div class="stat-value">' + stats.totalDays + '</div><div class="stat-label">Jours person-jour</div></div>' +
-      '<div class="stat-box"><div class="stat-value">' + stats.worked + '</div><div class="stat-label">Jours travaillés</div></div>' +
-      '<div class="stat-box"><div class="stat-value">' + stats.nonWorked + '</div><div class="stat-label">Jours non travaillés</div></div>' +
-      '<div class="stat-box"><div class="stat-value">' + mainRatio.toFixed(1) + '%</div><div class="stat-label">' + ratioLabel + '</div></div>';
     el.ratioNote.textContent = note;
 
+    // --- Theme colors for charts ---
+    const textColor = getComputedStyle(document.body).getPropertyValue('--text').trim() || '#f1f5f9';
+    const mutedColor = getComputedStyle(document.body).getPropertyValue('--text-muted').trim() || '#94a3b8';
+    const borderColor = getComputedStyle(document.body).getPropertyValue('--bg-card').trim() || '#1e293b';
+    const gridColor = getComputedStyle(document.body).getPropertyValue('--border').trim() || '#475569';
+
+    // --- Histogramme : non travaillés uniquement, couleurs stables, labels ---
+    const barPersons = displayPersons;
+    const nonWorkedData = barPersons.map(function (p) {
+      return stats.byPerson[p] ? stats.byPerson[p].nonWorked : 0;
+    });
+    const barColors = barPersons.map(function (p) { return getPersonColor(p); });
+
+    if (charts.bar) charts.bar.destroy();
+    const barCtx = $('#chart-bar').getContext('2d');
+    charts.bar = new Chart(barCtx, {
+      type: 'bar',
+      data: {
+        labels: barPersons,
+        datasets: [{
+          label: 'Jours non travaillés',
+          data: nonWorkedData,
+          backgroundColor: barColors,
+          borderRadius: 6,
+          borderWidth: 0
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        layout: { padding: { top: 24 } },
+        scales: {
+          x: {
+            ticks: { color: mutedColor, font: { weight: '600' } },
+            grid: { display: false }
+          },
+          y: {
+            beginAtZero: true,
+            ticks: { color: mutedColor, stepSize: 1 },
+            grid: { color: gridColor }
+          }
+        },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: function (ctx) {
+                return ctx.parsed.y + ' jour' + (ctx.parsed.y > 1 ? 's' : '') + ' non travaillé' + (ctx.parsed.y > 1 ? 's' : '');
+              }
+            }
+          }
+        }
+      },
+      plugins: [barValuePlugin]
+    });
+
+    // --- Camembert ---
     const pieMode = el.pieMode.value;
     el.pairSelects.hidden = pieMode !== 'nonworked-pair';
 
     let pieLabels = [];
     let pieData = [];
+    let pieColors = [];
     let pieTitle = 'Répartition des codes';
 
     if (pieMode === 'codes') {
       pieLabels = Object.keys(stats.byCode);
       pieData = Object.values(stats.byCode);
+      // codes n'ont pas de couleur personne → palette générique
+      pieColors = generateColors(pieLabels.length);
       pieTitle = 'Répartition des codes';
     } else if (pieMode === 'nonworked-all') {
-      pieLabels = Object.keys(stats.byPerson);
-      pieData = pieLabels.map(function (p) { return stats.byPerson[p].nonWorked; });
+      pieLabels = displayPersons;
+      pieData = pieLabels.map(function (p) {
+        return stats.byPerson[p] ? stats.byPerson[p].nonWorked : 0;
+      });
+      pieColors = pieLabels.map(function (p) { return getPersonColor(p); });
       pieTitle = 'Jours non travaillés – équipe';
     } else if (pieMode === 'nonworked-pair') {
       const a = el.pairA.value;
@@ -571,15 +691,11 @@
       const nb = stats.byPerson[b] ? stats.byPerson[b].nonWorked : 0;
       pieLabels = [a || 'A', b || 'B'];
       pieData = [na, nb];
+      pieColors = [getPersonColor(a), getPersonColor(b)];
       pieTitle = 'Non travaillés : ' + a + ' vs ' + b;
     }
 
     el.pieTitle.textContent = pieTitle;
-    const colors = generateColors(pieLabels.length);
-    const textColor = getComputedStyle(document.body).getPropertyValue('--text').trim() || '#f1f5f9';
-    const mutedColor = getComputedStyle(document.body).getPropertyValue('--text-muted').trim() || '#94a3b8';
-    const borderColor = getComputedStyle(document.body).getPropertyValue('--bg-card').trim() || '#1e293b';
-    const gridColor = getComputedStyle(document.body).getPropertyValue('--border').trim() || '#475569';
 
     if (charts.pie) charts.pie.destroy();
     const pieCtx = $('#chart-pie').getContext('2d');
@@ -589,7 +705,7 @@
         labels: pieLabels,
         datasets: [{
           data: pieData,
-          backgroundColor: colors,
+          backgroundColor: pieColors,
           borderWidth: 2,
           borderColor: borderColor
         }]
@@ -605,49 +721,10 @@
         }
       }
     });
-
-    const persons = Object.keys(stats.byPerson);
-    const nonWorkedData = persons.map(function (p) { return stats.byPerson[p].nonWorked; });
-    const totalData = persons.map(function (p) { return stats.byPerson[p].total; });
-
-    if (charts.bar) charts.bar.destroy();
-    const barCtx = $('#chart-bar').getContext('2d');
-    charts.bar = new Chart(barCtx, {
-      type: 'bar',
-      data: {
-        labels: persons,
-        datasets: [
-          {
-            label: 'Non travaillés',
-            data: nonWorkedData,
-            backgroundColor: '#f59e0b',
-            borderRadius: 4
-          },
-          {
-            label: 'Total jours',
-            data: totalData,
-            backgroundColor: '#3b82f6',
-            borderRadius: 4
-          }
-        ]
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        scales: {
-          x: { ticks: { color: mutedColor }, grid: { color: 'transparent' } },
-          y: { beginAtZero: true, ticks: { color: mutedColor }, grid: { color: gridColor } }
-        },
-        plugins: { legend: { labels: { color: textColor } } }
-      }
-    });
   }
 
   function generateColors(n) {
-    const base = [
-      '#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6',
-      '#06b6d4', '#ec4899', '#84cc16', '#f97316', '#6366f1'
-    ];
+    const base = PERSON_PALETTE;
     const out = [];
     for (let i = 0; i < n; i++) out.push(base[i % base.length]);
     return out;
@@ -658,23 +735,21 @@
     el.tableCount.textContent = '(' + filtered.length + ' ligne' + (filtered.length > 1 ? 's' : '') + ')';
 
     const display = filtered.slice(0, 1000);
-    el.tableBody.innerHTML = display
-      .map(function (r) {
-        const type = isNonWorked(r) ? 'Non travaillé' : 'Travaillé';
-        const badgeClass = isNonWorked(r) ? 'badge-off' : 'badge-work';
-        const codeLabel = r.code || '(vide)';
-        return (
-          '<tr>' +
-          '<td>' + formatDate(r.date) + '</td>' +
-          '<td>' + r.person + '</td>' +
-          '<td>' + r.role + '</td>' +
-          '<td><span class="badge">' + codeLabel + '</span></td>' +
-          '<td>' + (r.note || '—') + '</td>' +
-          '<td><span class="badge ' + badgeClass + '">' + type + '</span></td>' +
-          '</tr>'
-        );
-      })
-      .join('');
+    el.tableBody.innerHTML = display.map(function (r) {
+      const type = isNonWorked(r) ? 'Non travaillé' : 'Travaillé';
+      const badgeClass = isNonWorked(r) ? 'badge-off' : 'badge-work';
+      const codeLabel = r.code || '(vide)';
+      return (
+        '<tr>' +
+        '<td>' + formatDate(r.date) + '</td>' +
+        '<td>' + r.person + '</td>' +
+        '<td>' + r.role + '</td>' +
+        '<td><span class="badge">' + codeLabel + '</span></td>' +
+        '<td>' + (r.note || '—') + '</td>' +
+        '<td><span class="badge ' + badgeClass + '">' + type + '</span></td>' +
+        '</tr>'
+      );
+    }).join('');
 
     if (filtered.length > 1000) {
       el.tableBody.innerHTML +=
@@ -689,7 +764,6 @@
       el.heatmapGrid.innerHTML = '<p style="color:var(--text-muted)">Aucune donnée</p>';
       return;
     }
-
     const parts = monthVal.split('-');
     const y = +parts[0];
     const mo = +parts[1];
@@ -710,18 +784,18 @@
     if (personFilter) {
       el.heatmapGrid.innerHTML = buildMonthCalendar(y, mo - 1, list, personFilter);
     } else {
-      const persons = [...new Set(list.map(function (r) { return r.person; }))].sort();
+      const persons = Array.from(new Set(list.map(function (r) { return r.person; }))).sort();
       if (!persons.length) {
         el.heatmapGrid.innerHTML = '<p style="color:var(--text-muted)">Aucune donnée pour ce mois</p>';
         return;
       }
-      el.heatmapGrid.innerHTML = persons
-        .map(function (p) {
-          const pl = list.filter(function (r) { return r.person === p; });
-          return '<div><h4 style="margin-bottom:0.35rem;font-size:0.9rem">' + p + '</h4>' +
-            buildMonthCalendar(y, mo - 1, pl, p) + '</div>';
-        })
-        .join('');
+      el.heatmapGrid.innerHTML = persons.map(function (p) {
+        const pl = list.filter(function (r) { return r.person === p; });
+        return '<div><h4 style="margin-bottom:0.35rem;font-size:0.9rem">' +
+          '<span class="color-dot" style="display:inline-block;width:10px;height:10px;border-radius:50%;background:' +
+          getPersonColor(p) + ';margin-right:6px;vertical-align:middle"></span>' +
+          p + '</h4>' + buildMonthCalendar(y, mo - 1, pl, p) + '</div>';
+      }).join('');
     }
   }
 
@@ -730,7 +804,6 @@
     const last = new Date(year, monthIndex + 1, 0);
     const startPad = (first.getDay() + 6) % 7;
     const daysInMonth = last.getDate();
-
     const byDay = new Map();
     list.forEach(function (r) {
       if (r.person === person || !person) byDay.set(r.date.getDate(), r);
@@ -741,16 +814,14 @@
       weekdays.map(function (w) { return '<div>' + w + '</div>'; }).join('') +
       '</div><div class="heatmap-days">';
 
-    for (let i = 0; i < startPad; i++) {
-      html += '<div class="heatmap-day empty"></div>';
-    }
+    for (let i = 0; i < startPad; i++) html += '<div class="heatmap-day empty"></div>';
 
     for (let d = 1; d <= daysInMonth; d++) {
       const rec = byDay.get(d);
-      let bg = HEAT_COLORS.other;
+      let bg = 'var(--bg)';
       let codeLabel = '';
-      let title = '';
-      let textColor = '#fff';
+      let title = 'Pas de donnée';
+      let textColor = 'var(--text-muted)';
 
       if (rec) {
         const cat = dutyCategory(rec);
@@ -758,11 +829,7 @@
         codeLabel = rec.code || (rec.note === 'flight' ? 'vol' : '·');
         title = formatDate(rec.date) + ' – ' + (rec.code || '(vide)') +
           (rec.note ? ' / ' + rec.note : '');
-        textColor = (cat === 'other' || !rec) ? '#fff' : '#fff';
-      } else {
-        bg = 'var(--bg)';
-        title = 'Pas de donnée';
-        textColor = 'var(--text-muted)';
+        textColor = '#fff';
       }
 
       html +=
@@ -771,7 +838,6 @@
         (codeLabel ? '<span class="day-code">' + codeLabel + '</span>' : '') +
         '</div>';
     }
-
     html += '</div></div>';
     return html;
   }
@@ -779,25 +845,19 @@
   function openNonWorkedModal() {
     const present = new Set(records.map(function (r) { return r.code; }).filter(Boolean));
     KNOWN_CODES.forEach(function (c) { present.add(c); });
-    const sorted = [...present].sort();
-
-    el.checkboxes.innerHTML = sorted
-      .map(function (c) {
-        return (
-          '<label class="checkbox-item">' +
-          '<input type="checkbox" value="' + c + '"' +
-          (nonWorkedCodes.has(c) ? ' checked' : '') + ' />' +
-          '<span>' + c + '</span></label>'
-        );
-      })
-      .join('');
-
+    const sorted = Array.from(present).sort();
+    el.checkboxes.innerHTML = sorted.map(function (c) {
+      return (
+        '<label class="checkbox-item">' +
+        '<input type="checkbox" value="' + c + '"' +
+        (nonWorkedCodes.has(c) ? ' checked' : '') + ' />' +
+        '<span>' + c + '</span></label>'
+      );
+    }).join('');
     el.modal.classList.add('open');
   }
 
-  function closeNonWorkedModal() {
-    el.modal.classList.remove('open');
-  }
+  function closeNonWorkedModal() { el.modal.classList.remove('open'); }
 
   function saveNonWorked() {
     const checked = new Set();
@@ -815,31 +875,15 @@
 
   function exportData() {
     const filtered = getFiltered();
-    if (!filtered.length) {
-      toast('Aucune donnée à exporter');
-      return;
-    }
+    if (!filtered.length) { toast('Aucune donnée à exporter'); return; }
 
     const header = ['Date', 'Personne', 'Rôle', 'Code', 'Note', 'Non_travaillé', 'Source'];
     const rows = filtered.map(function (r) {
-      return [
-        isoDate(r.date),
-        r.person,
-        r.role,
-        r.code || '',
-        r.note || '',
-        isNonWorked(r) ? 'oui' : 'non',
-        r.source
-      ];
+      return [isoDate(r.date), r.person, r.role, r.code || '', r.note || '', isNonWorked(r) ? 'oui' : 'non', r.source];
     });
-
-    const csv = [header].concat(rows)
-      .map(function (row) {
-        return row.map(function (c) {
-          return '"' + String(c).replace(/"/g, '""') + '"';
-        }).join(';');
-      })
-      .join('\n');
+    const csv = [header].concat(rows).map(function (row) {
+      return row.map(function (c) { return '"' + String(c).replace(/"/g, '""') + '"'; }).join(';');
+    }).join('\n');
 
     const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
     const url = URL.createObjectURL(blob);
@@ -854,8 +898,7 @@
   function initCollapsibles() {
     $$('.collapsible-header').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        const targetId = btn.dataset.target;
-        const body = document.getElementById(targetId);
+        const body = document.getElementById(btn.dataset.target);
         if (!body) return;
         const open = btn.getAttribute('aria-expanded') === 'true';
         btn.setAttribute('aria-expanded', String(!open));
@@ -877,7 +920,6 @@
     });
 
     $('#btn-export').addEventListener('click', exportData);
-
     $('#btn-clear').addEventListener('click', function () {
       if (confirm('Effacer toutes les données chargées ?')) {
         records = [];
@@ -914,7 +956,6 @@
     el.pieMode.addEventListener('change', function () { renderStatsAndCharts(); });
     el.pairA.addEventListener('change', function () { renderStatsAndCharts(); });
     el.pairB.addEventListener('change', function () { renderStatsAndCharts(); });
-
     el.heatmapPerson.addEventListener('change', renderHeatmap);
     el.heatmapMonth.addEventListener('change', renderHeatmap);
 
@@ -936,14 +977,37 @@
   }
 
   function registerSW() {
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('./sw.js').catch(function (err) {
-        console.warn('SW failed', err);
+    if (!('serviceWorker' in navigator)) return;
+    navigator.serviceWorker.register('./sw.js').then(function (reg) {
+      // Detect updates
+      reg.addEventListener('updatefound', function () {
+        const nw = reg.installing;
+        if (!nw) return;
+        nw.addEventListener('statechange', function () {
+          if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+            toast('Nouvelle version disponible – rechargement…', 4000);
+            nw.postMessage({ type: 'SKIP_WAITING' });
+            setTimeout(function () { location.reload(); }, 1200);
+          }
+        });
       });
-    }
+      // Periodic check (useful after GitHub deploy)
+      setInterval(function () { reg.update(); }, 60 * 60 * 1000);
+    }).catch(function (err) {
+      console.warn('SW failed', err);
+    });
+
+    // Reload when the new SW takes control
+    let refreshing = false;
+    navigator.serviceWorker.addEventListener('controllerchange', function () {
+      if (refreshing) return;
+      refreshing = true;
+      location.reload();
+    });
   }
 
   function init() {
+    if (el.appVersion) el.appVersion.textContent = 'v' + APP_VERSION;
     const savedTheme = localStorage.getItem(THEME_KEY) || 'dark';
     applyTheme(savedTheme);
     loadState();
