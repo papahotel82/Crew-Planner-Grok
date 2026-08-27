@@ -60,10 +60,19 @@
 
         <!-- Stats -->
         <section class="card">
-          <div class="card-title">📊 Indicateurs clés</div>
-          <div class="stats-grid" id="stats-grid">
-            <!-- filled by JS -->
+          <div class="card-title">
+            <span>📊 Indicateurs clés</span>
+            <div class="filter-group" style="min-width:auto;margin:0">
+              <label for="ratio-mode" style="font-size:0.7rem">Mode ratio</label>
+              <select id="ratio-mode" style="min-height:36px;padding:0.35rem 0.5rem;font-size:0.85rem">
+                <option value="period">% sur la période</option>
+                <option value="year">% vs jours de l'année</option>
+                <option value="projected">Projection annualisée</option>
+              </select>
+            </div>
           </div>
+          <div class="stats-grid" id="stats-grid"></div>
+          <p id="ratio-note" style="font-size:0.8rem;color:var(--text-muted);margin-top:0.75rem"></p>
         </section>
 
         <!-- Filters -->
@@ -100,9 +109,27 @@
         <!-- Charts -->
         <section class="card">
           <div class="card-title">📈 Visualisations</div>
+          <div class="charts-controls" style="display:flex;flex-wrap:wrap;gap:0.75rem;margin-bottom:1rem;align-items:flex-end">
+            <div class="filter-group">
+              <label for="pie-mode">Camembert</label>
+              <select id="pie-mode">
+                <option value="codes">Répartition des codes</option>
+                <option value="nonworked-all">Non travaillés – toute l'équipe</option>
+                <option value="nonworked-pair">Non travaillés – comparaison 2 personnes</option>
+              </select>
+            </div>
+            <div class="filter-group" id="pair-selects" hidden>
+              <label>Comparer</label>
+              <div style="display:flex;gap:0.5rem;flex-wrap:wrap">
+                <select id="pair-a"></select>
+                <span style="align-self:center">↔</span>
+                <select id="pair-b"></select>
+              </div>
+            </div>
+          </div>
           <div class="charts-grid">
             <div>
-              <h3 style="font-size:0.95rem;margin-bottom:0.5rem;color:var(--text-muted)">Répartition des codes</h3>
+              <h3 id="pie-title" style="font-size:0.95rem;margin-bottom:0.5rem;color:var(--text-muted)">Répartition des codes</h3>
               <div class="chart-container">
                 <canvas id="chart-pie"></canvas>
               </div>
@@ -116,26 +143,52 @@
           </div>
         </section>
 
-        <!-- Data table -->
-        <section class="card">
-          <div class="card-title">
-            <span>📋 Détail du planning</span>
-            <span id="table-count" style="font-size:0.85rem;font-weight:500;color:var(--text-muted)"></span>
+        <!-- Calendar heatmap (collapsible) -->
+        <section class="card collapsible">
+          <button type="button" class="collapsible-header" aria-expanded="false" data-target="heatmap-body">
+            <span>📅 Calendrier (heatmap)</span>
+            <span class="chevron">▼</span>
+          </button>
+          <div id="heatmap-body" class="collapsible-body" hidden>
+            <div class="filters" style="margin-bottom:1rem">
+              <div class="filter-group">
+                <label for="heatmap-person">Personne</label>
+                <select id="heatmap-person">
+                  <option value="">Toutes (vue consolidée)</option>
+                </select>
+              </div>
+              <div class="filter-group">
+                <label for="heatmap-month">Mois</label>
+                <select id="heatmap-month"></select>
+              </div>
+            </div>
+            <div id="heatmap-legend" class="heatmap-legend"></div>
+            <div id="heatmap-grid" class="heatmap-grid"></div>
           </div>
-          <div class="table-wrapper">
-            <table>
-              <thead>
-                <tr>
-                  <th>Date</th>
-                  <th>Personne</th>
-                  <th>Rôle</th>
-                  <th>Code</th>
-                  <th>Note</th>
-                  <th>Type</th>
-                </tr>
-              </thead>
-              <tbody id="table-body"></tbody>
-            </table>
+        </section>
+
+        <!-- Data table (collapsible, last) -->
+        <section class="card collapsible">
+          <button type="button" class="collapsible-header" aria-expanded="false" data-target="table-body-section">
+            <span>📋 Détail du planning <span id="table-count" style="font-weight:500;color:var(--text-muted);font-size:0.9rem"></span></span>
+            <span class="chevron">▼</span>
+          </button>
+          <div id="table-body-section" class="collapsible-body" hidden>
+            <div class="table-wrapper">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Personne</th>
+                    <th>Rôle</th>
+                    <th>Code</th>
+                    <th>Note</th>
+                    <th>Type</th>
+                  </tr>
+                </thead>
+                <tbody id="table-body"></tbody>
+              </table>
+            </div>
           </div>
         </section>
       </div>
@@ -150,15 +203,32 @@
         <button type="button" class="btn btn-ghost btn-icon" id="modal-close" aria-label="Fermer">✕</button>
       </div>
       <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:0.5rem">
-        Cochez les codes qui doivent être comptés comme <strong>jours non travaillés</strong> pour le calcul du ratio.
-        Les cellules vides sont traitées comme jours travaillés (vol).
+        Cochez les codes qui doivent être comptés comme <strong>jours non travaillés</strong>.
+        Les <strong>cellules vides</strong> sont des jours travaillés (sans vol ni bureau / O, training / T, visite médicale / M…).
       </p>
-      <div class="checkbox-grid" id="nonworked-checkboxes">
-        <!-- filled by JS -->
-      </div>
+      <div class="checkbox-grid" id="nonworked-checkboxes"></div>
       <div class="modal-footer">
         <button type="button" class="btn btn-secondary" id="modal-cancel">Annuler</button>
         <button type="button" class="btn btn-primary" id="modal-save">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal conflict resolution -->
+  <div class="modal-overlay" id="modal-conflict" role="dialog" aria-modal="true" aria-labelledby="conflict-title">
+    <div class="modal" style="max-width:640px">
+      <div class="modal-header">
+        <h2 id="conflict-title">Conflits de consolidation</h2>
+        <button type="button" class="btn btn-ghost btn-icon" id="conflict-close" aria-label="Fermer">✕</button>
+      </div>
+      <p style="color:var(--text-muted);font-size:0.9rem;margin-bottom:0.75rem">
+        Des jours existent déjà pour les mêmes personnes/dates. Choisissez comment les résoudre :
+      </p>
+      <div id="conflict-list" style="max-height:40vh;overflow-y:auto;margin-bottom:1rem"></div>
+      <div class="modal-footer" style="flex-wrap:wrap">
+        <button type="button" class="btn btn-secondary" id="conflict-keep-old">Garder l'existant</button>
+        <button type="button" class="btn btn-secondary" id="conflict-keep-new">Garder le nouveau</button>
+        <button type="button" class="btn btn-primary" id="conflict-apply">Appliquer les choix</button>
       </div>
     </div>
   </div>
