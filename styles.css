@@ -67,6 +67,7 @@ body {
   line-height: 1.5;
   min-height: 100dvh;
   overflow-x: hidden;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
 }
 
 button, input, select, label {
@@ -99,7 +100,11 @@ button {
 header {
   background: var(--bg-card);
   border-bottom: 1px solid var(--border);
-  padding: 0.75rem 1rem;
+  /* Respect iOS status bar / notch / Dynamic Island */
+  padding-top: calc(0.75rem + env(safe-area-inset-top, 0px));
+  padding-bottom: 0.75rem;
+  padding-left: calc(1rem + env(safe-area-inset-left, 0px));
+  padding-right: calc(1rem + env(safe-area-inset-right, 0px));
   position: sticky;
   top: 0;
   z-index: 50;
@@ -175,6 +180,9 @@ header {
 main {
   flex: 1;
   padding: 1rem;
+  padding-left: calc(1rem + env(safe-area-inset-left, 0px));
+  padding-right: calc(1rem + env(safe-area-inset-right, 0px));
+  padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
   display: flex;
   flex-direction: column;
   gap: 1.25rem;
@@ -511,10 +519,20 @@ tr:hover td { background: var(--bg-secondary); }
 
 /* Responsive adjustments */
 @media (max-width: 480px) {
-  header { padding: 0.5rem; }
+  header {
+    padding-top: calc(0.5rem + env(safe-area-inset-top, 0px));
+    padding-bottom: 0.5rem;
+    padding-left: calc(0.5rem + env(safe-area-inset-left, 0px));
+    padding-right: calc(0.5rem + env(safe-area-inset-right, 0px));
+  }
   .logo { font-size: 1rem; }
   .btn { padding: 0.5rem 0.75rem; font-size: 0.85rem; }
-  main { padding: 0.75rem; }
+  main {
+    padding-top: 0.75rem;
+    padding-left: calc(0.75rem + env(safe-area-inset-left, 0px));
+    padding-right: calc(0.75rem + env(safe-area-inset-right, 0px));
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  }
   .stat-value { font-size: 1.4rem; }
 }
 

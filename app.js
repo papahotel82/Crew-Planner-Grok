@@ -1,12 +1,12 @@
 /**
- * Crew Planner PWA v1.1.0
+ * Crew Planner PWA v1.1.1
  * Analyse des plannings équipage (format Crew Duties XLSX)
  */
 
 (function () {
   'use strict';
 
-  const APP_VERSION = '1.1.0';
+  const APP_VERSION = '1.1.1';
   const STORAGE_KEY = 'crewPlannerData_v1';
   const THEME_KEY = 'crewPlannerTheme';
 

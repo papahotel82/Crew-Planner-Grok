@@ -2,7 +2,7 @@
  * Bump APP_VERSION + CACHE_NAME on every release so clients get the new assets.
  * Pattern: network-first for HTML/JS/CSS, cache-first for static icons & CDNs.
  */
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.1.1';
 const CACHE_NAME = 'crew-planner-v' + APP_VERSION;
 
 const CORE_ASSETS = [
